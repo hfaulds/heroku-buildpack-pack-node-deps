@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -e
+
+indent() {
+    sed 's/^/      /'
+}
+
+BUILD_DIR=$1
+ENV_DIR=$3
+
+if [ ! -f ${ENV_DIR}/APP_DEPS ]; then
+    echo "APP_DEPS was not set. Aborting!" | indent
+    exit 1
+fi
+
+APP_DEPS=$(cat ${ENV_DIR}/APP_DEPS)       # ex. `api core`
+
+(
+  for app_dir in ${APP_DEPS}; do
+    if [ -f ${app_dir}/package.json ]; then
+      cd $BUILD_DIR/$app_dir                                      &&
+      package_name_line=$(npm run env | grep "npm_package_name")  &&
+      package_name=$(cut -d "=" -f 2 <<< $package_name_line)
+
+      cd $BUILD_DIR                                               &&
+      touch "node_modules/$package_name"                          &&
+      rm "node_modules/$package_name"                                 # remove linked dependency
+
+      cd $BUILD_DIR/$app_dir                                      &&
+      echo 'pack'                                                 &&
+      pack=$(npm pack)                                                # pack dependency
+
+      cd $BUILD_DIR                                               &&
+      echo "npm install $pack"                                    &&
+      npm install $pack                                               # install dependency
+    fi
+  done
+)
+
+if [ $? -eq 1 ]; then
+    echo "FAILED to stage ${APP_BASE} ${APP_DEPS}" | indent
+    exit 1
+fi
+
+echo "Copied ${APP_BASE} ${APP_DEPS} to application root successfully." | indent
